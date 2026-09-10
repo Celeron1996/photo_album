@@ -279,6 +279,7 @@ ssh root@192.168.1.14 'cat /tmp/photoalbum.log'
 - `QVideoFrame::pixelFormatName()` 不存在，需要自己映射枚举名。
 - 重载信号（如 `QMediaPlayer::error(QMediaPlayer::Error)`）建议用旧式 `SIGNAL/SLOT` 连接，槽函数可以省略参数。
 - `QVideoWidget` 在 linuxfb 平台可正常渲染（Qt 自带 GStreamer 视频 sink，软渲染，不依赖 OpenGL）。
+- 触摸屏（本板特有）：udev 把 goodix 触摸屏误标为 tablet（`ID_INPUT_TABLET=1`），linuxfb 默认优先使用的 libinput 会忽略该设备；同时 DTS 的 `touchscreen-size-x/y` 声明为 800x480，而 gt9xx 驱动实际输出 1024x600 坐标且不做缩放，Qt 按 800x480 归一化会把坐标放大，表现为「画面点击正常、底部按钮点不到」。`main.cpp` 启动时自动处理：禁用 libinput、扫描并显式指定触摸设备、通过 `EVIOCSABS` 按屏幕实际分辨率修正上报范围。
 
 ---
 

@@ -1,12 +1,97 @@
 #include "albumwindow.h"
 
 #include <QApplication>
+#include <QByteArray>
+#include <QFile>
 #include <QFileInfo>
 #include <QFont>
 #include <QFontDatabase>
+#include <QList>
+#include <QString>
+
+#include <cstring>
+#include <fcntl.h>
+#include <linux/input.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+// 扫描 /dev/input/event*，按设备能力（是否支持 ABS_MT_POSITION_X/Y）找到触摸屏。
+// 本板 goodix 触摸屏被 udev 误标为 tablet（ID_INPUT_TABLET=1），linuxfb 默认
+// 优先使用的 libinput 会依据 udev 标签将其忽略，因此需要显式指定设备。
+static QString findTouchScreen()
+{
+    unsigned char absBits[(ABS_CNT + 7) / 8];
+
+    for (int i = 0; i < 32; ++i) {
+        const QString path = QStringLiteral("/dev/input/event%1").arg(i);
+        const QByteArray nativePath = path.toLocal8Bit();
+        const int fd = ::open(nativePath.constData(), O_RDONLY | O_NONBLOCK);
+        if (fd < 0)
+            continue;
+
+        std::memset(absBits, 0, sizeof(absBits));
+        const bool hasMtAxes =
+            ::ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(absBits)), absBits) >= 0
+            && (absBits[ABS_MT_POSITION_X / 8] & (1 << (ABS_MT_POSITION_X % 8)))
+            && (absBits[ABS_MT_POSITION_Y / 8] & (1 << (ABS_MT_POSITION_Y % 8)));
+        ::close(fd);
+
+        if (hasMtAxes)
+            return path;
+    }
+    return QString();
+}
+
+static void setupInputEnvironment()
+{
+    // 禁用 libinput，走 evdev 输入通道
+    if (qEnvironmentVariableIsEmpty("QT_QPA_FB_NO_LIBINPUT"))
+        qputenv("QT_QPA_FB_NO_LIBINPUT", "1");
+
+    const QString touchDevice = findTouchScreen();
+    if (touchDevice.isEmpty())
+        return;
+
+    // 修正触摸屏上报范围：本板 DTS 声明 touchscreen-size 为 800x480，
+    // 但 gt9xx 驱动实际输出 1024x600 坐标且不做缩放。Qt 按 800x480 归一化
+    // 会把坐标放大，屏幕底部按钮点不到。这里通过 EVIOCSABS 把范围改成
+    // 实际屏幕分辨率（读 /sys/class/graphics/fb0/virtual_size）。
+    int screenW = 0;
+    int screenH = 0;
+    QFile sizeFile(QStringLiteral("/sys/class/graphics/fb0/virtual_size"));
+    if (sizeFile.open(QIODevice::ReadOnly)) {
+        const QList<QByteArray> parts = sizeFile.readAll().trimmed().split(',');
+        if (parts.size() == 2) {
+            screenW = parts.at(0).toInt();
+            screenH = parts.at(1).toInt();
+        }
+    }
+
+    const int fd = ::open(touchDevice.toLocal8Bit().constData(), O_RDWR | O_NONBLOCK);
+    if (fd >= 0) {
+        struct input_absinfo info;
+        if (screenW > 1 && ::ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &info) == 0
+            && info.maximum != screenW - 1) {
+            info.maximum = screenW - 1;
+            ::ioctl(fd, EVIOCSABS(ABS_MT_POSITION_X), &info);
+        }
+        if (screenH > 1 && ::ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &info) == 0
+            && info.maximum != screenH - 1) {
+            info.maximum = screenH - 1;
+            ::ioctl(fd, EVIOCSABS(ABS_MT_POSITION_Y), &info);
+        }
+        ::close(fd);
+    }
+
+    // 显式指定触摸屏设备（自动发现依赖 udev 标签，本板会漏掉）
+    if (qEnvironmentVariableIsEmpty("QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS"))
+        qputenv("QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS", touchDevice.toLocal8Bit());
+}
 
 int main(int argc, char *argv[])
 {
+    setupInputEnvironment();
+
     QApplication a(argc, argv);
     a.setOrganizationName(QStringLiteral("100ask"));
     a.setApplicationName(QStringLiteral("PhotoAlbum"));

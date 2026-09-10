@@ -71,3 +71,8 @@ convert -size 1024x600 -depth 8 bgra:fb.raw fb.png
 - 播放带音轨的 MP4 时日志出现 `A lot of buffers are being dropped.`（GStreamer 警告，单核 A7 上正常现象）
 - `QSettings` 保存在 `/root/.config/100ask/PhotoAlbum.conf`
 - 触摸会被 Qt 合成为鼠标事件，滑动/点击只需处理鼠标事件即可（无需 `QSwipeGesture`）
+- 扩展名与实际格式不符的图片（如 `bg2.png` 实为 JPEG）：`QImageReader` 默认按扩展名选择解码插件会读取失败，需调用 `setDecideFormatFromContent(true)` 按内容识别
+- 触摸屏无法使用/底部按钮点不到（本板 goodix）：
+  - udev 把设备误标为 tablet（`ID_INPUT_TABLET=1`），linuxfb 默认优先使用的 libinput 依据 udev 标签将其忽略
+  - DTS 声明 `touchscreen-size-x/y = 800/480`，但 gt9xx 驱动实际输出 1024x600 坐标且不缩放，Qt 归一化后坐标被放大，底部区域落到屏幕外
+  - 修复：`main.cpp` 启动时禁用 libinput、按设备能力（`ABS_MT_POSITION_X/Y`）扫描并显式指定触摸设备、用 `EVIOCSABS` 按 `/sys/class/graphics/fb0/virtual_size` 修正上报范围
