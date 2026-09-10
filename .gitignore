@@ -1,0 +1,19 @@
+# 编译产物 / build artifacts
+*.o
+*.a
+*.so
+*.so.*
+*.d
+*.gch
+
+# Qt 生成文件 / Qt generated files
+moc_*.cpp
+moc_*.h
+ui_*.h
+Makefile
+.qmake.stash
+*.pro.user
+
+# 构建目录与可执行文件 / build dir and binary
+build/
+PhotoAlbum
