@@ -215,8 +215,12 @@ void AlbumWindow::playCurrent()
 void AlbumWindow::displayImage(const QString &path)
 {
     QImageReader reader(path);
+    // 按文件内容识别格式，忽略扩展名：有些图片扩展名与实际格式不符
+    // （例如 bg2.png 实际是 JPEG），默认按扩展名选插件会导致解码失败
+    reader.setDecideFormatFromContent(true);
     reader.setAutoTransform(true);
     if (!reader.canRead()) {
+        qWarning() << "cannot read image:" << path << reader.errorString();
         m_statusLabel->setText(QStringLiteral("无法读取图片: %1").arg(QFileInfo(path).fileName()));
         if (m_autoPlay)
             QTimer::singleShot(2000, this, &AlbumWindow::playNext);
@@ -233,6 +237,7 @@ void AlbumWindow::displayImage(const QString &path)
 
     const QImage image = reader.read();
     if (image.isNull()) {
+        qWarning() << "image decode failed:" << path << reader.errorString();
         m_statusLabel->setText(QStringLiteral("图片解码失败: %1").arg(QFileInfo(path).fileName()));
         if (m_autoPlay)
             QTimer::singleShot(2000, this, &AlbumWindow::playNext);
