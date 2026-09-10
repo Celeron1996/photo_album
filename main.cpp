@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QByteArray>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QFont>
@@ -88,9 +89,37 @@ static void setupInputEnvironment()
         qputenv("QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS", touchDevice.toLocal8Bit());
 }
 
+// 系统 PulseAudio 的 socket 路径带随机后缀（/tmp/pulse-XXXX/native），
+// 自动探测并设置 PULSE_SERVER，否则 GStreamer 音频输出无法连接
+static void setupAudioEnvironment()
+{
+    if (!qEnvironmentVariableIsEmpty("PULSE_SERVER"))
+        return;
+
+    const QStringList candidates = QDir(QStringLiteral("/tmp"))
+        .entryList(QStringList() << QStringLiteral("pulse-*"),
+                   QDir::Dirs | QDir::NoDotAndDotDot);
+    for (int i = 0; i < candidates.size(); ++i) {
+        const QString socket = QStringLiteral("/tmp/%1/native").arg(candidates.at(i));
+        if (QFile::exists(socket)) {
+            qputenv("PULSE_SERVER", QStringLiteral("unix:%1").arg(socket).toLocal8Bit());
+            return;
+        }
+    }
+
+    const char *const fallbacks[] = { "/run/pulse/native", "/var/run/pulse/native", 0 };
+    for (int i = 0; fallbacks[i]; ++i) {
+        if (QFile::exists(QLatin1String(fallbacks[i]))) {
+            qputenv("PULSE_SERVER", QByteArray("unix:") + fallbacks[i]);
+            return;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     setupInputEnvironment();
+    setupAudioEnvironment();
 
     QApplication a(argc, argv);
     a.setOrganizationName(QStringLiteral("100ask"));

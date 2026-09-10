@@ -76,3 +76,9 @@ convert -size 1024x600 -depth 8 bgra:fb.raw fb.png
   - udev 把设备误标为 tablet（`ID_INPUT_TABLET=1`），linuxfb 默认优先使用的 libinput 依据 udev 标签将其忽略
   - DTS 声明 `touchscreen-size-x/y = 800/480`，但 gt9xx 驱动实际输出 1024x600 坐标且不缩放，Qt 归一化后坐标被放大，底部区域落到屏幕外
   - 修复：`main.cpp` 启动时禁用 libinput、按设备能力（`ABS_MT_POSITION_X/Y`）扫描并显式指定触摸设备、用 `EVIOCSABS` 按 `/sys/class/graphics/fb0/virtual_size` 修正上报范围
+- 720p60/1080p 视频无法播放（`Internal data stream error.`）：
+  - 直接原因：Qt 5.12 的 `QPainterVideoSurface::present()` 在上一帧未绘制完成（`m_ready == false`）时返回 false，Qt 的 GStreamer sink 将其转为 `GST_FLOW_ERROR`，qtdemux 报 `Internal data stream error.`
+  - 触发条件：带音轨时视频按音频时钟推帧，单核 A7 上全屏（约 900x506）缩放绘制一帧的时间接近帧间隔（24fps=41ms），稍有波动就触发
+  - 修复：`QVideoWidget` 固定为视频原始尺寸并居中（1:1 绘制，见 `albumwindow.cpp` 的 `kVideoWidth/kVideoHeight`）
+  - 测试视频需转码为 640x360@24、H.264 Baseline + AAC（ffmpeg 命令见 README FAQ Q2）；原 720p60/1080p 源无法软解
+- 音频输出：系统 PulseAudio socket 为 `/tmp/pulse-XXXX/native`（后缀随机），需设置 `PULSE_SERVER=unix:<socket>`；`main.cpp` 启动时自动扫描设置。未连接音频时视频可静音播放（不再报错）

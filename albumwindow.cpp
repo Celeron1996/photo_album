@@ -23,6 +23,8 @@
 static const int kImageIntervalMs = 5000;
 static const int kSwipeThreshold = 80;
 static const int kClickThreshold = 12;
+static const int kVideoWidth = 640;
+static const int kVideoHeight = 360;
 
 AlbumWindow::AlbumWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -80,8 +82,25 @@ void AlbumWindow::buildUi()
     m_imageLabel->setStyleSheet(QStringLiteral("background:#000000;"));
     m_stack->addWidget(m_imageLabel);
 
-    m_videoWidget = new QVideoWidget(m_stack);
-    m_stack->addWidget(m_videoWidget);
+    // 视频页：固定为视频原始尺寸并居中。QVideoWidget 的 QPainterVideoSurface
+    // 在上一帧未画完时 present() 会返回 false（Qt 的 GStreamer sink 视为致命
+    // 错误），单核板子上全屏缩放绘制太慢，会随机触发 Internal data stream error。
+    // 1:1 尺寸绘制开销最小，可避免该问题。
+    m_videoPage = new QWidget(m_stack);
+    m_videoPage->setStyleSheet(QStringLiteral("background:#000000;"));
+    QVBoxLayout *videoOuter = new QVBoxLayout(m_videoPage);
+    videoOuter->setContentsMargins(0, 0, 0, 0);
+    QHBoxLayout *videoInner = new QHBoxLayout;
+    videoInner->setContentsMargins(0, 0, 0, 0);
+    m_videoWidget = new QVideoWidget(m_videoPage);
+    m_videoWidget->setFixedSize(kVideoWidth, kVideoHeight);
+    videoInner->addStretch();
+    videoInner->addWidget(m_videoWidget);
+    videoInner->addStretch();
+    videoOuter->addStretch();
+    videoOuter->addLayout(videoInner);
+    videoOuter->addStretch();
+    m_stack->addWidget(m_videoPage);
 
     mainLayout->addWidget(m_stack, 1);
 
@@ -151,6 +170,7 @@ void AlbumWindow::buildUi()
     // 触摸/鼠标滑动与点击切换（触摸会被合成为鼠标事件）
     m_stack->installEventFilter(this);
     m_imageLabel->installEventFilter(this);
+    m_videoPage->installEventFilter(this);
     m_videoWidget->installEventFilter(this);
 }
 
@@ -250,7 +270,7 @@ void AlbumWindow::displayImage(const QString &path)
 
 void AlbumWindow::displayVideo(const QString &path)
 {
-    m_stack->setCurrentWidget(m_videoWidget);
+    m_stack->setCurrentWidget(m_videoPage);
     m_player->setMedia(QUrl::fromLocalFile(path));
     m_player->setVolume(m_muteButton->isChecked() ? 0 : 80);
     m_player->play();

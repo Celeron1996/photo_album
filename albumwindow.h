@@ -57,6 +57,7 @@ private:
 
     QStackedWidget *m_stack;
     QLabel *m_imageLabel;
+    QWidget *m_videoPage;
     QVideoWidget *m_videoWidget;
     QMediaPlayer *m_player;
     QLabel *m_statusLabel;

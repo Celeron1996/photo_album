@@ -280,6 +280,8 @@ ssh root@192.168.1.14 'cat /tmp/photoalbum.log'
 - 重载信号（如 `QMediaPlayer::error(QMediaPlayer::Error)`）建议用旧式 `SIGNAL/SLOT` 连接，槽函数可以省略参数。
 - `QVideoWidget` 在 linuxfb 平台可正常渲染（Qt 自带 GStreamer 视频 sink，软渲染，不依赖 OpenGL）。
 - 触摸屏（本板特有）：udev 把 goodix 触摸屏误标为 tablet（`ID_INPUT_TABLET=1`），linuxfb 默认优先使用的 libinput 会忽略该设备；同时 DTS 的 `touchscreen-size-x/y` 声明为 800x480，而 gt9xx 驱动实际输出 1024x600 坐标且不做缩放，Qt 按 800x480 归一化会把坐标放大，表现为「画面点击正常、底部按钮点不到」。`main.cpp` 启动时自动处理：禁用 libinput、扫描并显式指定触摸设备、通过 `EVIOCSABS` 按屏幕实际分辨率修正上报范围。
+- 视频随机报 `Internal data stream error.`：Qt 5.12 的 `QPainterVideoSurface::present()` 在上一帧尚未绘制完成时返回 false，Qt 的 GStreamer sink 将其当作致命错误（flow error），qtdemux 随即报错。带音轨时视频按音频时钟推帧，单核板子上全屏缩放绘制太慢必然触发。解决：`QVideoWidget` 固定为视频原始尺寸并居中（1:1 绘制，见 `albumwindow.cpp` 的 `kVideoWidth/kVideoHeight`）。
+- 音频输出：系统 PulseAudio 的 socket 路径带随机后缀（`/tmp/pulse-XXXX/native`），不设置 `PULSE_SERVER` 时 GStreamer 连不上音频（视频仍可静音播放）。`main.cpp` 启动时自动扫描并设置 `PULSE_SERVER`。
 
 ---
 
@@ -288,8 +290,17 @@ ssh root@192.168.1.14 'cat /tmp/photoalbum.log'
 **Q1：`ssh: connect to host 192.168.1.14 port 22: No route to host`？**
 开发板网络不稳定或未开机。先 `ping 192.168.1.14`，多试几次；确认板子已启动、网线连接正常。
 
-**Q2：视频播放卡顿/丢帧？**
-i.MX6ULL 无 VPU，只能软解。请使用 ≤640x480、15~24fps 的 MP4；日志中的 `Warning: "A lot of buffers are being dropped."` 是单核 A7 上带音轨视频的正常警告。
+**Q2：视频播放卡顿/丢帧/无法播放？**
+i.MX6ULL 无 VPU，只能软解。720p60、1080p 这类视频无法实时解码，请先转码（在性能较好的主机上执行）：
+
+```sh
+ffmpeg -i 源视频.mp4 \
+    -vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2" \
+    -r 24 -c:v libx264 -profile:v baseline -level 3.0 -preset veryfast -crf 23 \
+    -c:a copy -movflags +faststart 输出.mp4
+```
+
+日志中的 `Warning: "A lot of buffers are being dropped."` 是单核 A7 上带音轨视频的常见警告，不影响播放。
 
 **Q3：界面中文显示为方框？**
 确认板端 `/usr/lib/fonts/msyh.ttc` 存在，并且运行时设置了 `QT_QPA_FONTDIR=/usr/lib/fonts`。
