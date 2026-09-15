@@ -1,5 +1,7 @@
 #include "albumwindow.h"
 
+#include "imagetransitionwidget.h"
+
 #include <QDir>
 #include <QDebug>
 #include <QEvent>
@@ -193,7 +195,8 @@ AlbumWindow::AlbumWindow(QWidget *parent) :
     m_autoPlay(true),
     m_updatingList(false),
     m_lastVolume(80),
-    m_errorRetries(0)
+    m_errorRetries(0),
+    m_lastItemWasImage(false)
 {
     buildUi();
 
@@ -279,10 +282,8 @@ void AlbumWindow::buildUi()
     m_stack = new QStackedWidget(mainArea);
     m_stack->setStyleSheet(QStringLiteral("background:#000000;"));
 
-    m_imageLabel = new QLabel(m_stack);
-    m_imageLabel->setAlignment(Qt::AlignCenter);
-    m_imageLabel->setStyleSheet(QStringLiteral("background:#000000;"));
-    m_stack->addWidget(m_imageLabel);
+    m_imageWidget = new ImageTransitionWidget(m_stack);
+    m_stack->addWidget(m_imageWidget);
 
     // 视频页：固定为视频原始尺寸并居中。QVideoWidget 的 QPainterVideoSurface
     // 在上一帧未画完时 present() 会返回 false（Qt 的 GStreamer sink 视为致命
@@ -426,7 +427,7 @@ void AlbumWindow::buildUi()
 
     // 触摸/鼠标滑动与点击切换（触摸会被合成为鼠标事件）
     m_stack->installEventFilter(this);
-    m_imageLabel->installEventFilter(this);
+    m_imageWidget->installEventFilter(this);
     m_videoPage->installEventFilter(this);
     m_videoWidget->installEventFilter(this);
 
@@ -486,20 +487,25 @@ void AlbumWindow::playCurrent()
 
     qDebug() << "play" << path;
 
-    if (PlaylistModel::isVideoFile(path)) {
+    const bool previousWasImage = m_lastItemWasImage;
+    const bool isVideo = PlaylistModel::isVideoFile(path);
+
+    if (isVideo) {
         displayVideo(path);
     } else {
-        displayImage(path);
+        // 只在“图片 → 图片”时播放过渡动画
+        displayImage(path, previousWasImage);
         if (m_autoPlay)
             restartImageTimer();
     }
+    m_lastItemWasImage = !isVideo;
 
     updatePlayPauseButton();
     updateStatus();
     syncListSelection();
 }
 
-void AlbumWindow::displayImage(const QString &path)
+void AlbumWindow::displayImage(const QString &path, bool animate)
 {
     QImageReader reader(path);
     // 按文件内容识别格式，忽略扩展名：有些图片扩展名与实际格式不符
@@ -531,8 +537,8 @@ void AlbumWindow::displayImage(const QString &path)
         return;
     }
 
-    m_imageLabel->setPixmap(QPixmap::fromImage(image));
-    m_stack->setCurrentWidget(m_imageLabel);
+    m_imageWidget->setImage(QPixmap::fromImage(image), animate);
+    m_stack->setCurrentWidget(m_imageWidget);
 }
 
 void AlbumWindow::displayVideo(const QString &path)

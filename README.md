@@ -14,6 +14,7 @@
 | 自定义播放列表 | 点击「选择目录」，通过 `QFileDialog` 选择任意目录 |
 | 播放列表即路径 | 自动遍历所选目录（不递归）下的 `*.mp4 *.png *.jpg *.jpeg *.bmp`，按文件名排序生成列表 |
 | 自动轮播 | 图片固定 5 秒切换、视频播完自动切下一个、到列表末尾循环 |
+| 图片切换动画 | 仅图片↔图片切换时播放过渡动画（淡入淡出/平移/缩放/卡片翻转/圆形展开/旋转，随机选择） |
 | 手动控制 | 上/下一张按钮、触摸左右滑动、点击画面切下一个、鼠标拖拽、键盘 ←/→/空格 |
 
 其他：全屏 1024x600、深色扁平化 UI（自绘矢量图标，无图片资源）、中文界面、音量滑块（0-100，自动记忆）、静音开关、播放列表面板、记住上次目录。
@@ -81,6 +82,7 @@ photo_album/                 # 仓库根目录（即本应用源码目录）
 ├── photo_album.pro          # qmake 工程文件（Qt Widgets + Multimedia）
 ├── main.cpp                 # 程序入口：QSettings 标识、中文字体加载、全屏显示
 ├── albumwindow.h / .cpp     # 主窗口：界面构建 + 播放控制 + 滑动/点击/键盘交互
+├── imagetransitionwidget.h / .cpp  # 图片显示控件：图片间过渡动画
 ├── playlistmodel.h / .cpp   # 播放列表：目录扫描、排序、上/下一项循环
 ├── scripts/                 # 板端辅助脚本（ALSA 混音器初始化）
 │   ├── S51alsa              #   开机恢复混音器状态（/etc/init.d/）
@@ -196,11 +198,17 @@ main.cpp
 AlbumWindow（albumwindow.h/.cpp）—— UI 与播放控制
   ├─ 顶部：状态栏（状态指示点 + 文件名 [序号/总数] 自动/手动 + 音量图标 + 滑块 0~100）
   ├─ 中部：QStackedWidget
-  │     ├─ 页 0：QLabel（图片，等比缩放居中）
+  │     ├─ 页 0：ImageTransitionWidget（图片显示 + 过渡动画，等比缩放居中）
   │     └─ 页 1：QWidget（居中固定尺寸的 QVideoWidget，视频输出）
   │     └─ 右侧：播放列表面板（可开关，280px，深色圆角选中样式）
   ├─ 底部：控制栏（左：选择目录 / 列表；中：上一张 / 播放暂停（蓝色圆形）/ 下一张；右：轮播 / 静音 / 退出）
   └─ QMediaPlayer（GStreamer 后端，音量由滑块控制并记忆，静音切换）
+
+ImageTransitionWidget（imagetransitionwidget.h/.cpp）—— 图片过渡动画
+  ├─ setImage(pixmap, animate)：animate 且已有上一张图时启动动画
+  ├─ QPropertyAnimation 驱动 progress(0→1)，500ms，InOutCubic
+  └─ paintEvent 按随机动画类型绘制：Fade/Slide/Zoom/Flip/Circle/Rotate
+     （仅“图片→图片”触发；图片↔视频不播放动画）
 
 PlaylistModel（playlistmodel.h/.cpp）—— 播放列表
   ├─ setDirectory()：扫描所选目录（不递归），过滤扩展名，按名称排序

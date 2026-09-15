@@ -9,6 +9,7 @@
 3. 播放列表即路径：自动遍历所选目录（不递归）下的 `*.mp4 *.png *.jpg *.jpeg *.bmp`（大小写不敏感），按文件名排序；`QSettings` 记住上次目录，首次默认 `/root/album_media`
 4. 自动轮播：图片固定 5 秒切换、视频播完自动切下一个、列表循环；手动控制：上一张/下一张按钮、触摸左右滑动（阈值 80px）、点击画面切下一个、鼠标拖拽、键盘 ←/→/空格
 5. 深色扁平化 UI：顶部状态栏（状态点 + 文件名/序号/模式 + 音量滑块 0~100，QSettings 记忆）、底部控制栏（左：选择目录/列表；中：上一张/播放暂停（蓝色圆形）/下一张；右：轮播/静音/退出），图标全部用 QPainter 自绘（无图片资源），静音按钮与滑块联动；全屏 1024x600，中文界面
+6. 图片切换过渡动画（仅“图片→图片”，随机选择）：淡入淡出、平移、缩放、卡片翻转、圆形展开、旋转，500ms InOutCubic；图片↔视频切换不播放动画
 
 ## 2. 文件与位置
 
@@ -84,3 +85,4 @@ convert -size 1024x600 -depth 8 bgra:fb.raw fb.png
 - 音频输出：系统 PulseAudio socket 为 `/tmp/pulse-XXXX/native`（后缀随机），需设置 `PULSE_SERVER=unix:<socket>`；`main.cpp` 启动时自动扫描设置。未连接音频时视频可静音播放（不再报错）
 - MP4 没有声音（本板 WM8960）：耳机输出音量（`Headphone Playback Volume`）上电默认为 0，且根文件系统无 ALSA 初始化脚本。解决：仓库 `scripts/asound.state`（音量 110）+ `scripts/S51alsa`（开机 `alsactl restore`），部署到板子 `/var/lib/alsa/asound.state` 与 `/etc/init.d/S51alsa` 并启动脚本
 - UI 样式：深色扁平化主题（QSS）+ QPainter 自绘矢量图标；`main.cpp` 设置 Fusion 风格 + 深色 QPalette，使 QFileDialog 等系统控件风格统一；播放按钮的圆形背景需直接设置在按钮自身的样式表上（父控件样式表中的 `QToolButton#playPause` ID 选择器在动态创建时未生效）
+- 图片过渡动画：`QPropertyAnimation` 必须显式设置 `setStartValue/setEndValue`（只设置属性名与 duration 时动画不会执行，表现为始终停留在上一张图）；过渡控件用 QPainter 变换绘制预缩放好的两张 pixmap，避免每帧重新缩放

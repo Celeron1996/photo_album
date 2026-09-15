@@ -7,6 +7,7 @@
 
 #include "playlistmodel.h"
 
+class ImageTransitionWidget;
 class QLabel;
 class QListWidget;
 class QMediaPlayer;
@@ -51,7 +52,7 @@ private:
     void buildUi();
     void loadDirectory(const QString &dir, bool autoStart);
     void playCurrent();
-    void displayImage(const QString &path);
+    void displayImage(const QString &path, bool animate = false);
     void displayVideo(const QString &path);
     void restartImageTimer();
     void updateStatus();
@@ -62,7 +63,7 @@ private:
     void updateAutoButton();
 
     QStackedWidget *m_stack;
-    QLabel *m_imageLabel;
+    ImageTransitionWidget *m_imageWidget;
     QWidget *m_videoPage;
     QVideoWidget *m_videoWidget;
     QMediaPlayer *m_player;
@@ -83,6 +84,7 @@ private:
     int m_lastVolume;
     int m_errorRetries;
     QString m_lastPlayedPath;
+    bool m_lastItemWasImage;
 };
 
 #endif // ALBUMWINDOW_H
