@@ -10,10 +10,10 @@
 class QLabel;
 class QListWidget;
 class QMediaPlayer;
-class QPushButton;
 class QSlider;
 class QStackedWidget;
 class QTimer;
+class QToolButton;
 class QVideoWidget;
 class QEvent;
 class QResizeEvent;
@@ -42,6 +42,7 @@ private slots:
     void togglePlaylist(bool on);
     void onVolumeChanged(int value);
     void onMediaStatusChanged();
+    void onPlayerStateChanged();
     void onPlayerError();
     void onListRowChanged(int row);
     void onImageTimeout();
@@ -56,6 +57,9 @@ private:
     void updateStatus();
     void refreshList();
     void syncListSelection();
+    void updatePlayPauseButton();
+    void updateMuteButton();
+    void updateAutoButton();
 
     QStackedWidget *m_stack;
     QLabel *m_imageLabel;
@@ -64,10 +68,11 @@ private:
     QMediaPlayer *m_player;
     QLabel *m_statusLabel;
     QSlider *m_volumeSlider;
-    QPushButton *m_playPauseButton;
-    QPushButton *m_autoButton;
-    QPushButton *m_muteButton;
-    QPushButton *m_listButton;
+    QToolButton *m_playPauseButton;
+    QToolButton *m_autoButton;
+    QToolButton *m_muteButton;
+    QToolButton *m_listButton;
+    QWidget *m_listPanel;
     QListWidget *m_listWidget;
     QTimer *m_imageTimer;
 

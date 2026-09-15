@@ -2,12 +2,14 @@
 
 #include <QApplication>
 #include <QByteArray>
+#include <QColor>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QFont>
 #include <QFontDatabase>
 #include <QList>
+#include <QPalette>
 #include <QString>
 
 #include <cstring>
@@ -124,6 +126,24 @@ int main(int argc, char *argv[])
     QApplication a(argc, argv);
     a.setOrganizationName(QStringLiteral("100ask"));
     a.setApplicationName(QStringLiteral("PhotoAlbum"));
+
+    // 统一使用 Fusion 风格 + 深色调色板（文件选择对话框等系统控件风格一致）
+    QApplication::setStyle(QStringLiteral("Fusion"));
+    QPalette palette;
+    palette.setColor(QPalette::Window, QColor(0x10, 0x10, 0x14));
+    palette.setColor(QPalette::WindowText, QColor(0xea, 0xea, 0xf0));
+    palette.setColor(QPalette::Base, QColor(0x1a, 0x1a, 0x20));
+    palette.setColor(QPalette::AlternateBase, QColor(0x22, 0x22, 0x2a));
+    palette.setColor(QPalette::Text, QColor(0xea, 0xea, 0xf0));
+    palette.setColor(QPalette::Button, QColor(0x1a, 0x1a, 0x20));
+    palette.setColor(QPalette::ButtonText, QColor(0xea, 0xea, 0xf0));
+    palette.setColor(QPalette::Highlight, QColor(0x2f, 0x9c, 0xf4));
+    palette.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));
+    palette.setColor(QPalette::ToolTipBase, QColor(0x1a, 0x1a, 0x20));
+    palette.setColor(QPalette::ToolTipText, QColor(0xea, 0xea, 0xf0));
+    palette.setColor(QPalette::Disabled, QPalette::Text, QColor(0x6a, 0x6a, 0x74));
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(0x6a, 0x6a, 0x74));
+    a.setPalette(palette);
 
     // 开发板中文字体（/usr/lib/fonts/msyh.ttc），存在则作为全局字体
     const QString fontPath = QStringLiteral("/usr/lib/fonts/msyh.ttc");

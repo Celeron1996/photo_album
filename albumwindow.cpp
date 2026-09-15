@@ -5,6 +5,7 @@
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QImageReader>
 #include <QKeyEvent>
@@ -12,20 +13,180 @@
 #include <QListWidget>
 #include <QMediaPlayer>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
+#include <QPolygonF>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSettings>
 #include <QSlider>
 #include <QStackedWidget>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QVideoWidget>
+#include <QtMath>
 
 static const int kImageIntervalMs = 5000;
 static const int kSwipeThreshold = 80;
 static const int kClickThreshold = 12;
 static const int kVideoWidth = 340;
 static const int kVideoHeight = 200;
+
+// 主题色
+static const QColor kAccent(0x2f, 0x9c, 0xf4);
+static const QColor kTextPrimary(0xea, 0xea, 0xf0);
+static const QColor kTextSecondary(0xc8, 0xc8, 0xd0);
+static const QColor kIconIdle(0xd5, 0xd5, 0xdd);
+static const QColor kIconDisabled(0x6a, 0x6a, 0x74);
+
+namespace {
+
+enum class Icon { Folder, List, Loop, Volume, Mute, Exit, Play, Pause, Prev, Next };
+
+// 用 QPainter 绘制矢量图标（不依赖图片资源，抗锯齿）
+QIcon makeIcon(Icon icon, const QColor &color, int size = 24)
+{
+    QPixmap pm(size, size);
+    pm.fill(Qt::transparent);
+
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal s = size;
+
+    QPen pen(color, s * 0.09);
+    pen.setCapStyle(Qt::RoundCap);
+    pen.setJoinStyle(Qt::RoundJoin);
+    p.setPen(pen);
+    p.setBrush(color);
+
+    switch (icon) {
+    case Icon::Play: {
+        QPolygonF tri;
+        tri << QPointF(s * 0.33, s * 0.22)
+            << QPointF(s * 0.80, s * 0.50)
+            << QPointF(s * 0.33, s * 0.78);
+        p.drawPolygon(tri);
+        break;
+    }
+    case Icon::Pause:
+        p.drawRoundedRect(QRectF(s * 0.30, s * 0.24, s * 0.14, s * 0.52), s * 0.05, s * 0.05);
+        p.drawRoundedRect(QRectF(s * 0.56, s * 0.24, s * 0.14, s * 0.52), s * 0.05, s * 0.05);
+        break;
+    case Icon::Prev:
+        p.drawRoundedRect(QRectF(s * 0.24, s * 0.26, s * 0.09, s * 0.48), s * 0.03, s * 0.03);
+        {
+            QPolygonF tri;
+            tri << QPointF(s * 0.78, s * 0.26)
+                << QPointF(s * 0.78, s * 0.74)
+                << QPointF(s * 0.40, s * 0.50);
+            p.drawPolygon(tri);
+        }
+        break;
+    case Icon::Next:
+        {
+            QPolygonF tri;
+            tri << QPointF(s * 0.22, s * 0.26)
+                << QPointF(s * 0.60, s * 0.50)
+                << QPointF(s * 0.22, s * 0.74);
+            p.drawPolygon(tri);
+        }
+        p.drawRoundedRect(QRectF(s * 0.67, s * 0.26, s * 0.09, s * 0.48), s * 0.03, s * 0.03);
+        break;
+    case Icon::Folder: {
+        QPainterPath path;
+        path.moveTo(s * 0.14, s * 0.74);
+        path.lineTo(s * 0.14, s * 0.30);
+        path.lineTo(s * 0.38, s * 0.30);
+        path.lineTo(s * 0.46, s * 0.40);
+        path.lineTo(s * 0.86, s * 0.40);
+        path.lineTo(s * 0.86, s * 0.74);
+        path.closeSubpath();
+        p.drawPath(path);
+        break;
+    }
+    case Icon::List:
+        for (int i = 0; i < 3; ++i) {
+            const qreal y = s * (0.30 + i * 0.20);
+            p.drawEllipse(QPointF(s * 0.24, y), s * 0.05, s * 0.05);
+            p.drawRoundedRect(QRectF(s * 0.38, y - s * 0.05, s * 0.40, s * 0.10),
+                              s * 0.05, s * 0.05);
+        }
+        break;
+    case Icon::Loop: {
+        const QRectF r(s * 0.20, s * 0.20, s * 0.60, s * 0.60);
+        p.setBrush(Qt::NoBrush);
+        p.drawArc(r, 30 * 16, 300 * 16);
+        const qreal pi = 3.14159265358979323846;
+        const qreal a = 30.0 * pi / 180.0;
+        const QPointF tip(r.center().x() + r.width() / 2 * qCos(a),
+                          r.center().y() - r.height() / 2 * qSin(a));
+        QPolygonF head;
+        head << tip + QPointF(-s * 0.02, -s * 0.13)
+             << tip + QPointF(s * 0.11, s * 0.01)
+             << tip + QPointF(-s * 0.08, s * 0.09);
+        p.setBrush(color);
+        p.setPen(Qt::NoPen);
+        p.drawPolygon(head);
+        break;
+    }
+    case Icon::Volume: {
+        QPolygonF body;
+        body << QPointF(s * 0.16, s * 0.40) << QPointF(s * 0.32, s * 0.40)
+             << QPointF(s * 0.50, s * 0.24) << QPointF(s * 0.50, s * 0.76)
+             << QPointF(s * 0.32, s * 0.60) << QPointF(s * 0.16, s * 0.60);
+        p.drawPolygon(body);
+        p.setBrush(Qt::NoBrush);
+        p.drawArc(QRectF(s * 0.42, s * 0.34, s * 0.26, s * 0.32), -60 * 16, 120 * 16);
+        p.drawArc(QRectF(s * 0.46, s * 0.24, s * 0.40, s * 0.52), -60 * 16, 120 * 16);
+        break;
+    }
+    case Icon::Mute: {
+        QPolygonF body;
+        body << QPointF(s * 0.14, s * 0.40) << QPointF(s * 0.30, s * 0.40)
+             << QPointF(s * 0.46, s * 0.24) << QPointF(s * 0.46, s * 0.76)
+             << QPointF(s * 0.30, s * 0.60) << QPointF(s * 0.14, s * 0.60);
+        p.drawPolygon(body);
+        p.drawLine(QPointF(s * 0.62, s * 0.40), QPointF(s * 0.86, s * 0.64));
+        p.drawLine(QPointF(s * 0.86, s * 0.40), QPointF(s * 0.62, s * 0.64));
+        break;
+    }
+    case Icon::Exit: {
+        p.setBrush(Qt::NoBrush);
+        p.drawArc(QRectF(s * 0.22, s * 0.22, s * 0.56, s * 0.56), 60 * 16, 240 * 16);
+        p.drawLine(QPointF(s * 0.50, s * 0.18), QPointF(s * 0.50, s * 0.46));
+        break;
+    }
+    }
+
+    p.end();
+    return QIcon(pm);
+}
+
+QToolButton *makeToolButton(Icon icon, const QString &text, QWidget *parent)
+{
+    QToolButton *button = new QToolButton(parent);
+    button->setText(text);
+    button->setIcon(makeIcon(icon, kIconIdle, 22));
+    button->setIconSize(QSize(22, 22));
+    button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    button->setMinimumSize(86, 60);
+    button->setFocusPolicy(Qt::NoFocus);
+    return button;
+}
+
+QToolButton *makeTransportButton(Icon icon, QWidget *parent)
+{
+    QToolButton *button = new QToolButton(parent);
+    button->setIcon(makeIcon(icon, kTextPrimary, 30));
+    button->setIconSize(QSize(30, 30));
+    button->setFixedSize(60, 60);
+    button->setFocusPolicy(Qt::NoFocus);
+    return button;
+}
+
+} // namespace
 
 AlbumWindow::AlbumWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -61,44 +222,55 @@ void AlbumWindow::buildUi()
     setWindowTitle(QStringLiteral("电子相册"));
 
     QWidget *central = new QWidget(this);
+    central->setStyleSheet(QStringLiteral("background:#101014;"));
     setCentralWidget(central);
 
     QVBoxLayout *rootLayout = new QVBoxLayout(central);
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
-    // 顶部状态栏：左侧状态文本 + 右侧音量滑块（0~100）
+    // ===== 顶部状态栏：状态指示 + 文件名 + 音量 =====
     QWidget *statusBar = new QWidget(central);
-    statusBar->setMinimumHeight(44);
-    statusBar->setStyleSheet(QStringLiteral("background:#202020;"));
+    statusBar->setFixedHeight(52);
+    statusBar->setStyleSheet(QStringLiteral(
+        "background:#1a1a20; border-bottom:1px solid #2a2a32;"));
     QHBoxLayout *statusLayout = new QHBoxLayout(statusBar);
-    statusLayout->setContentsMargins(12, 4, 12, 4);
-    statusLayout->setSpacing(10);
+    statusLayout->setContentsMargins(16, 6, 16, 6);
+    statusLayout->setSpacing(12);
+
+    QLabel *statusDot = new QLabel(statusBar);
+    statusDot->setFixedSize(10, 10);
+    statusDot->setStyleSheet(QStringLiteral(
+        "background:#2f9cf4; border-radius:5px;"));
+    statusLayout->addWidget(statusDot);
 
     m_statusLabel = new QLabel(QStringLiteral("请点击「选择目录」开始"), statusBar);
-    m_statusLabel->setStyleSheet(QStringLiteral("color:#ffffff; font-size:16px;"));
+    m_statusLabel->setStyleSheet(QStringLiteral("color:#eaeaf0; font-size:16px;"));
     m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     statusLayout->addWidget(m_statusLabel, 1);
 
-    QLabel *volumeLabel = new QLabel(QStringLiteral("音量"), statusBar);
-    volumeLabel->setStyleSheet(QStringLiteral("color:#ffffff; font-size:16px;"));
-    statusLayout->addWidget(volumeLabel);
+    QLabel *volumeIcon = new QLabel(statusBar);
+    volumeIcon->setPixmap(makeIcon(Icon::Volume, QColor(0x9a, 0x9a, 0xa5), 22)
+                              .pixmap(22, 22));
+    statusLayout->addWidget(volumeIcon);
 
     m_volumeSlider = new QSlider(Qt::Horizontal, statusBar);
     m_volumeSlider->setRange(0, 100);
     m_volumeSlider->setValue(80);
-    m_volumeSlider->setFixedWidth(200);
+    m_volumeSlider->setFixedWidth(180);
     m_volumeSlider->setMinimumHeight(36);
+    m_volumeSlider->setFocusPolicy(Qt::NoFocus);
     m_volumeSlider->setStyleSheet(QStringLiteral(
-        "QSlider::groove:horizontal { height:8px; background:#555555; border-radius:4px; }"
-        "QSlider::sub-page:horizontal { background:#4da3ff; border-radius:4px; }"
-        "QSlider::handle:horizontal { width:22px; margin:-8px 0; background:#e0e0e0;"
-        " border-radius:11px; }"));
+        "QSlider::groove:horizontal { height:6px; background:#2e2e38; border-radius:3px; }"
+        "QSlider::sub-page:horizontal { background:#2f9cf4; border-radius:3px; }"
+        "QSlider::add-page:horizontal { background:#2e2e38; border-radius:3px; }"
+        "QSlider::handle:horizontal { width:20px; height:20px; margin:-7px 0;"
+        " background:#ffffff; border-radius:10px; }"));
     statusLayout->addWidget(m_volumeSlider);
 
     rootLayout->addWidget(statusBar);
 
-    // 中间显示区（图片页 + 视频页）+ 可开关的播放列表面板
+    // ===== 中间显示区（图片页 + 视频页）+ 播放列表面板 =====
     QWidget *mainArea = new QWidget(central);
     QHBoxLayout *mainLayout = new QHBoxLayout(mainArea);
     mainLayout->setContentsMargins(0, 0, 0, 0);
@@ -134,47 +306,99 @@ void AlbumWindow::buildUi()
 
     mainLayout->addWidget(m_stack, 1);
 
-    m_listWidget = new QListWidget(mainArea);
-    m_listWidget->setFixedWidth(260);
-    m_listWidget->setVisible(false);
-    m_listWidget->setStyleSheet(QStringLiteral("font-size:14px;"));
-    mainLayout->addWidget(m_listWidget);
+    // 播放列表面板
+    m_listPanel = new QWidget(mainArea);
+    m_listPanel->setFixedWidth(280);
+    m_listPanel->setStyleSheet(QStringLiteral(
+        "background:#16161c; border-left:1px solid #2a2a32;"));
+    QVBoxLayout *listLayout = new QVBoxLayout(m_listPanel);
+    listLayout->setContentsMargins(12, 12, 12, 12);
+    listLayout->setSpacing(10);
+
+    QLabel *listTitle = new QLabel(QStringLiteral("播放列表"), m_listPanel);
+    listTitle->setStyleSheet(QStringLiteral("color:#9a9aa5; font-size:14px; font-weight:bold;"));
+    listLayout->addWidget(listTitle);
+
+    m_listWidget = new QListWidget(m_listPanel);
+    m_listWidget->setStyleSheet(QStringLiteral(
+        "QListWidget { background:transparent; border:none; color:#c8c8d0;"
+        " font-size:14px; outline:0; }"
+        "QListWidget::item { height:42px; padding-left:10px; border-radius:8px; margin:2px 0; }"
+        "QListWidget::item:hover { background:rgba(255,255,255,0.06); }"
+        "QListWidget::item:selected { background:#2f9cf4; color:#ffffff; }"));
+    listLayout->addWidget(m_listWidget, 1);
+
+    m_listPanel->setVisible(false);
+    mainLayout->addWidget(m_listPanel);
 
     rootLayout->addWidget(mainArea, 1);
 
-    // 底部控制栏
+    // ===== 底部控制栏 =====
     QWidget *bar = new QWidget(central);
-    bar->setStyleSheet(QStringLiteral("background:#202020;"));
+    bar->setFixedHeight(78);
+    bar->setStyleSheet(QStringLiteral(
+        "background:#1a1a20; border-top:1px solid #2a2a32;"
+        "QToolButton { background:transparent; border:none; color:#c8c8d0;"
+        " font-size:13px; padding:4px 8px; border-radius:10px; }"
+        "QToolButton:hover { background:rgba(255,255,255,0.08); }"
+        "QToolButton:pressed { background:rgba(255,255,255,0.16); }"
+        "QToolButton:checked { background:rgba(47,156,244,0.22); color:#2f9cf4; }"
+        "QToolButton:disabled { color:#5a5a64; }"));
     QHBoxLayout *barLayout = new QHBoxLayout(bar);
-    barLayout->setContentsMargins(8, 6, 8, 6);
-    barLayout->setSpacing(8);
+    barLayout->setContentsMargins(16, 8, 16, 8);
+    barLayout->setSpacing(10);
 
-    QPushButton *dirButton = new QPushButton(QStringLiteral("选择目录"), bar);
-    m_listButton = new QPushButton(QStringLiteral("列表"), bar);
+    QToolButton *dirButton = makeToolButton(Icon::Folder, QStringLiteral("选择目录"), bar);
+    m_listButton = makeToolButton(Icon::List, QStringLiteral("列表"), bar);
     m_listButton->setCheckable(true);
-    QPushButton *prevButton = new QPushButton(QStringLiteral("上一张"), bar);
-    m_playPauseButton = new QPushButton(QStringLiteral("播放/暂停"), bar);
-    QPushButton *nextButton = new QPushButton(QStringLiteral("下一张"), bar);
-    m_autoButton = new QPushButton(QStringLiteral("自动轮播: 开"), bar);
+
+    // 左右两组等宽，保证中间的播放控制组精确居中
+    QWidget *leftGroup = new QWidget(bar);
+    QHBoxLayout *leftLayout = new QHBoxLayout(leftGroup);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(10);
+    leftLayout->addWidget(dirButton);
+    leftLayout->addWidget(m_listButton);
+    leftLayout->addStretch();
+    leftGroup->setFixedWidth(300);
+
+    QToolButton *prevButton = makeTransportButton(Icon::Prev, bar);
+    m_playPauseButton = makeTransportButton(Icon::Play, bar);
+    m_playPauseButton->setStyleSheet(QStringLiteral(
+        "QToolButton { background:#2f9cf4; border:none; border-radius:30px; }"
+        "QToolButton:hover { background:#4aabff; }"
+        "QToolButton:pressed { background:#1f86dc; }"
+        "QToolButton:disabled { background:#2a2a32; }"));
+    QToolButton *nextButton = makeTransportButton(Icon::Next, bar);
+
+    m_autoButton = makeToolButton(Icon::Loop, QStringLiteral("轮播开"), bar);
     m_autoButton->setCheckable(true);
     m_autoButton->setChecked(true);
-    m_muteButton = new QPushButton(QStringLiteral("静音"), bar);
+    m_muteButton = makeToolButton(Icon::Volume, QStringLiteral("静音"), bar);
     m_muteButton->setCheckable(true);
-    QPushButton *exitButton = new QPushButton(QStringLiteral("退出"), bar);
+    QToolButton *exitButton = makeToolButton(Icon::Exit, QStringLiteral("退出"), bar);
 
-    QPushButton *buttons[] = { dirButton, m_listButton, prevButton, m_playPauseButton,
-                               nextButton, m_autoButton, m_muteButton, exitButton };
-    for (int i = 0; i < 8; ++i) {
-        buttons[i]->setMinimumHeight(46);
-        buttons[i]->setMinimumWidth(96);
-        buttons[i]->setStyleSheet(QStringLiteral("font-size:15px;"));
-        barLayout->addWidget(buttons[i]);
-    }
-    barLayout->addStretch();
+    QWidget *rightGroup = new QWidget(bar);
+    QHBoxLayout *rightLayout = new QHBoxLayout(rightGroup);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(10);
+    rightLayout->addStretch();
+    rightLayout->addWidget(m_autoButton);
+    rightLayout->addWidget(m_muteButton);
+    rightLayout->addWidget(exitButton);
+    rightGroup->setFixedWidth(300);
+
+    barLayout->addWidget(leftGroup);
+    barLayout->addStretch(1);
+    barLayout->addWidget(prevButton);
+    barLayout->addWidget(m_playPauseButton);
+    barLayout->addWidget(nextButton);
+    barLayout->addStretch(1);
+    barLayout->addWidget(rightGroup);
 
     rootLayout->addWidget(bar);
 
-    // 播放器
+    // ===== 播放器 =====
     m_player = new QMediaPlayer(this);
     m_player->setVideoOutput(m_videoWidget);
 
@@ -182,20 +406,22 @@ void AlbumWindow::buildUi()
     m_imageTimer->setSingleShot(true);
     m_imageTimer->setInterval(kImageIntervalMs);
 
-    // 信号连接
-    connect(dirButton, &QPushButton::clicked, this, &AlbumWindow::chooseDirectory);
-    connect(prevButton, &QPushButton::clicked, this, &AlbumWindow::playPrev);
-    connect(nextButton, &QPushButton::clicked, this, &AlbumWindow::playNext);
-    connect(m_playPauseButton, &QPushButton::clicked, this, &AlbumWindow::togglePlayPause);
-    connect(m_autoButton, &QPushButton::toggled, this, &AlbumWindow::toggleAutoPlay);
-    connect(m_muteButton, &QPushButton::toggled, this, &AlbumWindow::toggleMute);
+    // ===== 信号连接 =====
+    connect(dirButton, &QToolButton::clicked, this, &AlbumWindow::chooseDirectory);
+    connect(prevButton, &QToolButton::clicked, this, &AlbumWindow::playPrev);
+    connect(nextButton, &QToolButton::clicked, this, &AlbumWindow::playNext);
+    connect(m_playPauseButton, &QToolButton::clicked, this, &AlbumWindow::togglePlayPause);
+    connect(m_autoButton, &QToolButton::toggled, this, &AlbumWindow::toggleAutoPlay);
+    connect(m_muteButton, &QToolButton::toggled, this, &AlbumWindow::toggleMute);
     connect(m_volumeSlider, &QSlider::valueChanged, this, &AlbumWindow::onVolumeChanged);
-    connect(m_listButton, &QPushButton::toggled, this, &AlbumWindow::togglePlaylist);
-    connect(exitButton, &QPushButton::clicked, this, &QWidget::close);
+    connect(m_listButton, &QToolButton::toggled, this, &AlbumWindow::togglePlaylist);
+    connect(exitButton, &QToolButton::clicked, this, &QWidget::close);
     connect(m_imageTimer, &QTimer::timeout, this, &AlbumWindow::onImageTimeout);
     connect(m_listWidget, &QListWidget::currentRowChanged, this, &AlbumWindow::onListRowChanged);
     connect(m_player, SIGNAL(mediaStatusChanged(QMediaPlayer::MediaStatus)),
             this, SLOT(onMediaStatusChanged()));
+    connect(m_player, SIGNAL(stateChanged(QMediaPlayer::State)),
+            this, SLOT(onPlayerStateChanged()));
     connect(m_player, SIGNAL(error(QMediaPlayer::Error)), this, SLOT(onPlayerError()));
 
     // 触摸/鼠标滑动与点击切换（触摸会被合成为鼠标事件）
@@ -203,6 +429,11 @@ void AlbumWindow::buildUi()
     m_imageLabel->installEventFilter(this);
     m_videoPage->installEventFilter(this);
     m_videoWidget->installEventFilter(this);
+
+    // 初始按钮状态
+    updateAutoButton();
+    updateMuteButton();
+    updatePlayPauseButton();
 }
 
 void AlbumWindow::chooseDirectory()
@@ -257,14 +488,13 @@ void AlbumWindow::playCurrent()
 
     if (PlaylistModel::isVideoFile(path)) {
         displayVideo(path);
-        m_playPauseButton->setEnabled(true);
     } else {
         displayImage(path);
-        m_playPauseButton->setEnabled(false);
         if (m_autoPlay)
             restartImageTimer();
     }
 
+    updatePlayPauseButton();
     updateStatus();
     syncListSelection();
 }
@@ -340,8 +570,7 @@ void AlbumWindow::togglePlayPause()
 void AlbumWindow::toggleAutoPlay(bool on)
 {
     m_autoPlay = on;
-    m_autoButton->setText(on ? QStringLiteral("自动轮播: 开")
-                             : QStringLiteral("自动轮播: 关"));
+    updateAutoButton();
 
     const QString path = m_playlist.currentFile();
     if (!on) {
@@ -383,8 +612,7 @@ void AlbumWindow::onVolumeChanged(int value)
         m_muteButton->setChecked(muted);
         m_muteButton->blockSignals(blocked);
     }
-    m_muteButton->setText(muted ? QStringLiteral("取消静音")
-                                : QStringLiteral("静音"));
+    updateMuteButton();
 
     QSettings settings;
     settings.setValue(QStringLiteral("volume"), value);
@@ -392,7 +620,7 @@ void AlbumWindow::onVolumeChanged(int value)
 
 void AlbumWindow::togglePlaylist(bool on)
 {
-    m_listWidget->setVisible(on);
+    m_listPanel->setVisible(on);
     if (on)
         refreshList();
 
@@ -409,6 +637,11 @@ void AlbumWindow::onMediaStatusChanged()
         else
             updateStatus();
     }
+}
+
+void AlbumWindow::onPlayerStateChanged()
+{
+    updatePlayPauseButton();
 }
 
 void AlbumWindow::onPlayerError()
@@ -462,12 +695,20 @@ void AlbumWindow::updateStatus()
         return;
     }
 
-    m_statusLabel->setText(QStringLiteral("%1    [%2/%3]    %4")
-                               .arg(QFileInfo(path).fileName())
+    const QString suffix = QStringLiteral("  ·  %1 / %2  ·  %3")
                                .arg(m_playlist.currentIndex() + 1)
                                .arg(m_playlist.count())
                                .arg(m_autoPlay ? QStringLiteral("自动轮播")
-                                               : QStringLiteral("手动")));
+                                               : QStringLiteral("手动"));
+
+    const QString fileName = QFileInfo(path).fileName();
+    const QFontMetrics fm(m_statusLabel->font());
+    const int available = m_statusLabel->width() - fm.horizontalAdvance(suffix) - 8;
+    const QString displayName = (available > 60)
+            ? fm.elidedText(fileName, Qt::ElideMiddle, available)
+            : fileName;
+
+    m_statusLabel->setText(displayName + suffix);
 }
 
 void AlbumWindow::refreshList()
@@ -488,6 +729,34 @@ void AlbumWindow::syncListSelection()
     m_updatingList = true;
     m_listWidget->setCurrentRow(m_playlist.currentIndex());
     m_updatingList = false;
+}
+
+void AlbumWindow::updatePlayPauseButton()
+{
+    const QString path = m_playlist.currentFile();
+    const bool isVideo = PlaylistModel::isVideoFile(path);
+    m_playPauseButton->setEnabled(isVideo);
+
+    const bool playing = (m_player->state() == QMediaPlayer::PlayingState);
+    const QColor color = isVideo ? QColor(0xff, 0xff, 0xff) : kIconDisabled;
+    m_playPauseButton->setIcon(makeIcon(playing ? Icon::Pause : Icon::Play, color, 30));
+}
+
+void AlbumWindow::updateMuteButton()
+{
+    const bool muted = (m_volumeSlider->value() == 0);
+    m_muteButton->setText(muted ? QStringLiteral("取消静音")
+                                : QStringLiteral("静音"));
+    m_muteButton->setIcon(makeIcon(muted ? Icon::Mute : Icon::Volume,
+                                   muted ? kAccent : kIconIdle, 22));
+}
+
+void AlbumWindow::updateAutoButton()
+{
+    m_autoButton->setText(m_autoPlay ? QStringLiteral("轮播开")
+                                     : QStringLiteral("轮播关"));
+    m_autoButton->setIcon(makeIcon(Icon::Loop,
+                                   m_autoPlay ? kAccent : kIconIdle, 22));
 }
 
 bool AlbumWindow::eventFilter(QObject *watched, QEvent *event)
