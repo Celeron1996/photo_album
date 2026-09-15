@@ -24,14 +24,15 @@
 static const int kImageIntervalMs = 5000;
 static const int kSwipeThreshold = 80;
 static const int kClickThreshold = 12;
-static const int kVideoWidth = 640;
-static const int kVideoHeight = 360;
+static const int kVideoWidth = 340;
+static const int kVideoHeight = 200;
 
 AlbumWindow::AlbumWindow(QWidget *parent) :
     QMainWindow(parent),
     m_autoPlay(true),
     m_updatingList(false),
-    m_lastVolume(80)
+    m_lastVolume(80),
+    m_errorRetries(0)
 {
     buildUi();
 
@@ -243,6 +244,12 @@ void AlbumWindow::playCurrent()
     if (path.isEmpty())
         return;
 
+    // 切换到新的媒体项时重置错误重试计数（重试同一项时不清零）
+    if (path != m_lastPlayedPath) {
+        m_errorRetries = 0;
+        m_lastPlayedPath = path;
+    }
+
     m_imageTimer->stop();
     m_player->stop();
 
@@ -409,9 +416,20 @@ void AlbumWindow::onPlayerError()
     if (m_player->error() == QMediaPlayer::NoError)
         return;
 
+    qWarning() << "player error:" << m_player->errorString();
+
+    const QString fileName = QFileInfo(m_playlist.currentFile()).fileName();
+
+    // 切换视频时偶发的流错误：先重试当前项，避免直接跳过内容
+    if (m_errorRetries == 0) {
+        m_errorRetries++;
+        m_statusLabel->setText(QStringLiteral("播放重试: %1").arg(fileName));
+        QTimer::singleShot(500, this, &AlbumWindow::playCurrent);
+        return;
+    }
+
     m_statusLabel->setText(QStringLiteral("播放错误: %1 (%2)")
-                               .arg(QFileInfo(m_playlist.currentFile()).fileName(),
-                                    m_player->errorString()));
+                               .arg(fileName, m_player->errorString()));
     if (m_autoPlay)
         QTimer::singleShot(2000, this, &AlbumWindow::playNext);
 }

@@ -294,11 +294,11 @@ ssh root@192.168.1.14 'cat /tmp/photoalbum.log'
 开发板网络不稳定或未开机。先 `ping 192.168.1.14`，多试几次；确认板子已启动、网线连接正常。
 
 **Q2：视频播放卡顿/丢帧/无法播放？**
-i.MX6ULL 无 VPU，只能软解。720p60、1080p 这类视频无法实时解码，请先转码（在性能较好的主机上执行）：
+i.MX6ULL 无 VPU，只能软解。720p60、1080p 这类视频无法实时解码，建议转码为屏幕分辨率约 1/3 的尺寸（340x200，与应用的视频窗口 `kVideoWidth x kVideoHeight` 保持一致，1:1 绘制最流畅）：
 
 ```sh
 ffmpeg -i 源视频.mp4 \
-    -vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2" \
+    -vf "scale=340:200:force_original_aspect_ratio=decrease,pad=340:200:(ow-iw)/2:(oh-ih)/2" \
     -r 24 -c:v libx264 -profile:v baseline -level 3.0 -preset veryfast -crf 23 \
     -c:a copy -movflags +faststart 输出.mp4
 ```

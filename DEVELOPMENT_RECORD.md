@@ -80,6 +80,6 @@ convert -size 1024x600 -depth 8 bgra:fb.raw fb.png
   - 直接原因：Qt 5.12 的 `QPainterVideoSurface::present()` 在上一帧未绘制完成（`m_ready == false`）时返回 false，Qt 的 GStreamer sink 将其转为 `GST_FLOW_ERROR`，qtdemux 报 `Internal data stream error.`
   - 触发条件：带音轨时视频按音频时钟推帧，单核 A7 上全屏（约 900x506）缩放绘制一帧的时间接近帧间隔（24fps=41ms），稍有波动就触发
   - 修复：`QVideoWidget` 固定为视频原始尺寸并居中（1:1 绘制，见 `albumwindow.cpp` 的 `kVideoWidth/kVideoHeight`）
-  - 测试视频需转码为 640x360@24、H.264 Baseline + AAC（ffmpeg 命令见 README FAQ Q2）；原 720p60/1080p 源无法软解
+  - 测试视频需转码为 340x200@24、H.264 Baseline + AAC（约屏幕分辨率的 1/3，与视频窗口 1:1；ffmpeg 命令见 README FAQ Q2）；原 720p60/1080p 源无法软解
 - 音频输出：系统 PulseAudio socket 为 `/tmp/pulse-XXXX/native`（后缀随机），需设置 `PULSE_SERVER=unix:<socket>`；`main.cpp` 启动时自动扫描设置。未连接音频时视频可静音播放（不再报错）
 - MP4 没有声音（本板 WM8960）：耳机输出音量（`Headphone Playback Volume`）上电默认为 0，且根文件系统无 ALSA 初始化脚本。解决：仓库 `scripts/asound.state`（音量 110）+ `scripts/S51alsa`（开机 `alsactl restore`），部署到板子 `/var/lib/alsa/asound.state` 与 `/etc/init.d/S51alsa` 并启动脚本

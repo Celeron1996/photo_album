@@ -76,6 +76,8 @@ private:
     bool m_autoPlay;
     bool m_updatingList;
     int m_lastVolume;
+    int m_errorRetries;
+    QString m_lastPlayedPath;
 };
 
 #endif // ALBUMWINDOW_H
