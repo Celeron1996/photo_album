@@ -11,6 +11,7 @@ class QLabel;
 class QListWidget;
 class QMediaPlayer;
 class QPushButton;
+class QSlider;
 class QStackedWidget;
 class QTimer;
 class QVideoWidget;
@@ -39,6 +40,7 @@ private slots:
     void toggleAutoPlay(bool on);
     void toggleMute(bool on);
     void togglePlaylist(bool on);
+    void onVolumeChanged(int value);
     void onMediaStatusChanged();
     void onPlayerError();
     void onListRowChanged(int row);
@@ -61,6 +63,7 @@ private:
     QVideoWidget *m_videoWidget;
     QMediaPlayer *m_player;
     QLabel *m_statusLabel;
+    QSlider *m_volumeSlider;
     QPushButton *m_playPauseButton;
     QPushButton *m_autoButton;
     QPushButton *m_muteButton;
@@ -72,6 +75,7 @@ private:
     QPoint m_pressPos;
     bool m_autoPlay;
     bool m_updatingList;
+    int m_lastVolume;
 };
 
 #endif // ALBUMWINDOW_H

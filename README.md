@@ -16,7 +16,7 @@
 | 自动轮播 | 图片固定 5 秒切换、视频播完自动切下一个、到列表末尾循环 |
 | 手动控制 | 上/下一张按钮、触摸左右滑动、点击画面切下一个、鼠标拖拽、键盘 ←/→/空格 |
 
-其他：全屏 1024x600、中文界面、静音开关、播放列表面板、记住上次目录。
+其他：全屏 1024x600、中文界面、音量滑块（0-100，自动记忆）、静音开关、播放列表面板、记住上次目录。
 
 ---
 
@@ -194,13 +194,13 @@ main.cpp
   └─ AlbumWindow::showFullScreen()
 
 AlbumWindow（albumwindow.h/.cpp）—— UI 与播放控制
-  ├─ 顶部：状态栏 QLabel（文件名 [序号/总数] 自动/手动）
+  ├─ 顶部：状态栏（文件名 [序号/总数] 自动/手动 + 音量滑块 0~100）
   ├─ 中部：QStackedWidget
   │     ├─ 页 0：QLabel（图片，等比缩放居中）
-  │     └─ 页 1：QVideoWidget（视频输出）
+  │     └─ 页 1：QWidget（居中固定尺寸的 QVideoWidget，视频输出）
   │     └─ 右侧：QListWidget 播放列表面板（可开关，宽 260px）
   ├─ 底部：控制栏（选择目录 / 列表 / 上一张 / 播放暂停 / 下一张 / 自动轮播 / 静音 / 退出）
-  └─ QMediaPlayer（GStreamer 后端，音量 80，静音切换）
+  └─ QMediaPlayer（GStreamer 后端，音量由滑块控制并记忆，静音切换）
 
 PlaylistModel（playlistmodel.h/.cpp）—— 播放列表
   ├─ setDirectory()：扫描所选目录（不递归），过滤扩展名，按名称排序

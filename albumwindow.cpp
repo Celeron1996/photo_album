@@ -15,6 +15,7 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSettings>
+#include <QSlider>
 #include <QStackedWidget>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -29,12 +30,16 @@ static const int kVideoHeight = 360;
 AlbumWindow::AlbumWindow(QWidget *parent) :
     QMainWindow(parent),
     m_autoPlay(true),
-    m_updatingList(false)
+    m_updatingList(false),
+    m_lastVolume(80)
 {
     buildUi();
 
-    // 启动时恢复上次目录；首次运行默认 /root/album_media
+    // 启动时恢复上次目录与音量；首次运行默认 /root/album_media、音量 80
     QSettings settings;
+    const int volume = settings.value(QStringLiteral("volume"), 80).toInt();
+    m_volumeSlider->setValue(qBound(0, volume, 100));
+
     QString dir = settings.value(QStringLiteral("lastDir")).toString();
     if (dir.isEmpty() || !QDir(dir).exists())
         dir = QStringLiteral("/root/album_media");
@@ -61,12 +66,36 @@ void AlbumWindow::buildUi()
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
-    // 顶部状态栏
-    m_statusLabel = new QLabel(QStringLiteral("请点击「选择目录」开始"), central);
-    m_statusLabel->setMinimumHeight(36);
-    m_statusLabel->setStyleSheet(QStringLiteral(
-        "background:#202020; color:#ffffff; padding:4px 12px; font-size:16px;"));
-    rootLayout->addWidget(m_statusLabel);
+    // 顶部状态栏：左侧状态文本 + 右侧音量滑块（0~100）
+    QWidget *statusBar = new QWidget(central);
+    statusBar->setMinimumHeight(44);
+    statusBar->setStyleSheet(QStringLiteral("background:#202020;"));
+    QHBoxLayout *statusLayout = new QHBoxLayout(statusBar);
+    statusLayout->setContentsMargins(12, 4, 12, 4);
+    statusLayout->setSpacing(10);
+
+    m_statusLabel = new QLabel(QStringLiteral("请点击「选择目录」开始"), statusBar);
+    m_statusLabel->setStyleSheet(QStringLiteral("color:#ffffff; font-size:16px;"));
+    m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    statusLayout->addWidget(m_statusLabel, 1);
+
+    QLabel *volumeLabel = new QLabel(QStringLiteral("音量"), statusBar);
+    volumeLabel->setStyleSheet(QStringLiteral("color:#ffffff; font-size:16px;"));
+    statusLayout->addWidget(volumeLabel);
+
+    m_volumeSlider = new QSlider(Qt::Horizontal, statusBar);
+    m_volumeSlider->setRange(0, 100);
+    m_volumeSlider->setValue(80);
+    m_volumeSlider->setFixedWidth(200);
+    m_volumeSlider->setMinimumHeight(36);
+    m_volumeSlider->setStyleSheet(QStringLiteral(
+        "QSlider::groove:horizontal { height:8px; background:#555555; border-radius:4px; }"
+        "QSlider::sub-page:horizontal { background:#4da3ff; border-radius:4px; }"
+        "QSlider::handle:horizontal { width:22px; margin:-8px 0; background:#e0e0e0;"
+        " border-radius:11px; }"));
+    statusLayout->addWidget(m_volumeSlider);
+
+    rootLayout->addWidget(statusBar);
 
     // 中间显示区（图片页 + 视频页）+ 可开关的播放列表面板
     QWidget *mainArea = new QWidget(central);
@@ -159,6 +188,7 @@ void AlbumWindow::buildUi()
     connect(m_playPauseButton, &QPushButton::clicked, this, &AlbumWindow::togglePlayPause);
     connect(m_autoButton, &QPushButton::toggled, this, &AlbumWindow::toggleAutoPlay);
     connect(m_muteButton, &QPushButton::toggled, this, &AlbumWindow::toggleMute);
+    connect(m_volumeSlider, &QSlider::valueChanged, this, &AlbumWindow::onVolumeChanged);
     connect(m_listButton, &QPushButton::toggled, this, &AlbumWindow::togglePlaylist);
     connect(exitButton, &QPushButton::clicked, this, &QWidget::close);
     connect(m_imageTimer, &QTimer::timeout, this, &AlbumWindow::onImageTimeout);
@@ -272,7 +302,7 @@ void AlbumWindow::displayVideo(const QString &path)
 {
     m_stack->setCurrentWidget(m_videoPage);
     m_player->setMedia(QUrl::fromLocalFile(path));
-    m_player->setVolume(m_muteButton->isChecked() ? 0 : 80);
+    m_player->setVolume(m_volumeSlider->value());
     m_player->play();
 }
 
@@ -322,8 +352,35 @@ void AlbumWindow::toggleAutoPlay(bool on)
 
 void AlbumWindow::toggleMute(bool on)
 {
-    m_player->setVolume(on ? 0 : 80);
-    m_muteButton->setText(on ? QStringLiteral("取消静音") : QStringLiteral("静音"));
+    if (on) {
+        // 静音：记住当前音量并把滑块拉到 0（由 onVolumeChanged 同步按钮状态）
+        if (m_volumeSlider->value() > 0)
+            m_lastVolume = m_volumeSlider->value();
+        m_volumeSlider->setValue(0);
+    } else {
+        m_volumeSlider->setValue(m_lastVolume > 0 ? m_lastVolume : 80);
+    }
+}
+
+// 音量滑块（0~100）：直接控制播放器音量，并与静音按钮状态联动
+void AlbumWindow::onVolumeChanged(int value)
+{
+    m_player->setVolume(value);
+
+    if (value > 0)
+        m_lastVolume = value;
+
+    const bool muted = (value == 0);
+    if (m_muteButton->isChecked() != muted) {
+        const bool blocked = m_muteButton->blockSignals(true);
+        m_muteButton->setChecked(muted);
+        m_muteButton->blockSignals(blocked);
+    }
+    m_muteButton->setText(muted ? QStringLiteral("取消静音")
+                                : QStringLiteral("静音"));
+
+    QSettings settings;
+    settings.setValue(QStringLiteral("volume"), value);
 }
 
 void AlbumWindow::togglePlaylist(bool on)
