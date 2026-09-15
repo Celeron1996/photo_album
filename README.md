@@ -82,6 +82,9 @@ photo_album/                 # 仓库根目录（即本应用源码目录）
 ├── main.cpp                 # 程序入口：QSettings 标识、中文字体加载、全屏显示
 ├── albumwindow.h / .cpp     # 主窗口：界面构建 + 播放控制 + 滑动/点击/键盘交互
 ├── playlistmodel.h / .cpp   # 播放列表：目录扫描、排序、上/下一项循环
+├── scripts/                 # 板端辅助脚本（ALSA 混音器初始化）
+│   ├── S51alsa              #   开机恢复混音器状态（/etc/init.d/）
+│   └── asound.state         #   WM8960 混音器状态（耳机音量 110）
 ├── README.md                # 本文件
 ├── DEVELOPMENT_RECORD.md    # 开发/部署/验证过程记录
 └── .gitignore
@@ -310,6 +313,17 @@ ffmpeg -i 源视频.mp4 \
 
 **Q5：程序从哪里开始找媒体文件？**
 首次启动默认扫描 `/root/album_media`；之后会记住上次选择的目录（`/root/.config/100ask/PhotoAlbum.conf`）。
+
+**Q6：MP4 播放没有声音？**
+本板 WM8960 编解码器的耳机输出音量上电默认为 0（静音），且根文件系统没有 ALSA 初始化脚本。仓库提供了 `scripts/S51alsa`（开机执行 `alsactl restore`）和 `scripts/asound.state`（已调好 `Headphone Playback Volume = 110` 的混音器状态），部署方法：
+
+```sh
+scp scripts/S51alsa root@192.168.1.14:/etc/init.d/S51alsa
+scp scripts/asound.state root@192.168.1.14:/var/lib/alsa/asound.state
+ssh root@192.168.1.14 'chmod +x /etc/init.d/S51alsa && /etc/init.d/S51alsa start'
+```
+
+执行后立即生效，重启后由 S51alsa 自动恢复。若需调整音量，修改 `asound.state` 中 `Headphone Playback Volume` 的 `value.0/value.1`（范围 0~127）后重新 restore 即可。
 
 ---
 

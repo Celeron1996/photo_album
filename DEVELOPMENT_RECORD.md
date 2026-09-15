@@ -82,3 +82,4 @@ convert -size 1024x600 -depth 8 bgra:fb.raw fb.png
   - 修复：`QVideoWidget` 固定为视频原始尺寸并居中（1:1 绘制，见 `albumwindow.cpp` 的 `kVideoWidth/kVideoHeight`）
   - 测试视频需转码为 640x360@24、H.264 Baseline + AAC（ffmpeg 命令见 README FAQ Q2）；原 720p60/1080p 源无法软解
 - 音频输出：系统 PulseAudio socket 为 `/tmp/pulse-XXXX/native`（后缀随机），需设置 `PULSE_SERVER=unix:<socket>`；`main.cpp` 启动时自动扫描设置。未连接音频时视频可静音播放（不再报错）
+- MP4 没有声音（本板 WM8960）：耳机输出音量（`Headphone Playback Volume`）上电默认为 0，且根文件系统无 ALSA 初始化脚本。解决：仓库 `scripts/asound.state`（音量 110）+ `scripts/S51alsa`（开机 `alsactl restore`），部署到板子 `/var/lib/alsa/asound.state` 与 `/etc/init.d/S51alsa` 并启动脚本
