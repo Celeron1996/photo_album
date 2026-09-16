@@ -28,6 +28,9 @@ public:
     explicit AlbumWindow(QWidget *parent = 0);
     ~AlbumWindow();
 
+    // 直接进入/退出全屏（隐藏顶部状态栏与底部控制栏），供命令行参数使用
+    void setFullScreenMode(bool on) { toggleFullScreenMode(on); }
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
@@ -41,6 +44,7 @@ private slots:
     void toggleAutoPlay(bool on);
     void toggleMute(bool on);
     void togglePlaylist(bool on);
+    void toggleFullScreenMode(bool on);
     void onVolumeChanged(int value);
     void onMediaStatusChanged();
     void onPlayerStateChanged();
@@ -67,6 +71,10 @@ private:
     QWidget *m_videoPage;
     QVideoWidget *m_videoWidget;
     QMediaPlayer *m_player;
+    QWidget *m_statusBar;
+    QWidget *m_controlBar;
+    QToolButton *m_fullScreenButton;
+    QToolButton *m_exitFullScreenButton;
     QLabel *m_statusLabel;
     QSlider *m_volumeSlider;
     QToolButton *m_playPauseButton;
@@ -85,6 +93,7 @@ private:
     int m_errorRetries;
     QString m_lastPlayedPath;
     bool m_lastItemWasImage;
+    bool m_fullScreenMode;
 };
 
 #endif // ALBUMWINDOW_H

@@ -15,6 +15,7 @@
 | 播放列表即路径 | 自动遍历所选目录（不递归）下的 `*.mp4 *.png *.jpg *.jpeg *.bmp`，按文件名排序生成列表 |
 | 自动轮播 | 图片固定 5 秒切换、视频播完自动切下一个、到列表末尾循环 |
 | 图片切换动画 | 仅图片↔图片切换时播放过渡动画（淡入淡出/平移/缩放/卡片翻转/圆形展开/旋转，随机选择） |
+| 全屏（沉浸）模式 | 隐藏顶部状态栏与底部控制栏，图片/视频铺满整屏；右上角悬浮按钮退出，支持 `--fullscreen` 启动参数与 F 键切换 |
 | 手动控制 | 上/下一张按钮、触摸左右滑动、点击画面切下一个、鼠标拖拽、键盘 ←/→/空格 |
 
 其他：全屏 1024x600、深色扁平化 UI（自绘矢量图标，无图片资源）、中文界面、音量滑块（0-100，自动记忆）、静音开关、播放列表面板、记住上次目录。
@@ -163,6 +164,10 @@ ssh root@192.168.1.14 'cd /root && QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0 \
 # 后台运行 + 日志
 ssh root@192.168.1.14 'cd /root && nohup env QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0 \
     QT_QPA_FONTDIR=/usr/lib/fonts ./PhotoAlbum >/tmp/photoalbum.log 2>&1 &'
+
+# 启动即进入全屏（沉浸）模式
+ssh root@192.168.1.14 'cd /root && QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0 \
+    QT_QPA_FONTDIR=/usr/lib/fonts ./PhotoAlbum --fullscreen'
 ```
 
 首次启动默认扫描 `/root/album_media`；之后会记住上次选择的目录（`/root/.config/100ask/PhotoAlbum.conf`）。
@@ -201,7 +206,8 @@ AlbumWindow（albumwindow.h/.cpp）—— UI 与播放控制
   │     ├─ 页 0：ImageTransitionWidget（图片显示 + 过渡动画，等比缩放居中）
   │     └─ 页 1：QWidget（居中固定尺寸的 QVideoWidget，视频输出）
   │     └─ 右侧：播放列表面板（可开关，280px，深色圆角选中样式）
-  ├─ 底部：控制栏（左：选择目录 / 列表；中：上一张 / 播放暂停（蓝色圆形）/ 下一张；右：轮播 / 静音 / 退出）
+  ├─ 底部：控制栏（左：选择目录 / 列表 / 全屏；中：上一张 / 播放暂停（蓝色圆形）/ 下一张；右：轮播 / 静音 / 退出）
+  ├─ 全屏模式：隐藏顶栏与底栏，右上角悬浮退出按钮（QToolButton 覆盖在显示区）
   └─ QMediaPlayer（GStreamer 后端，音量由滑块控制并记忆，静音切换）
 
 ImageTransitionWidget（imagetransitionwidget.h/.cpp）—— 图片过渡动画

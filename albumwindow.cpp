@@ -45,7 +45,7 @@ static const QColor kIconDisabled(0x6a, 0x6a, 0x74);
 
 namespace {
 
-enum class Icon { Folder, List, Loop, Volume, Mute, Exit, Play, Pause, Prev, Next };
+enum class Icon { Folder, List, Loop, Volume, Mute, Exit, Play, Pause, Prev, Next, Expand, Collapse };
 
 // 用 QPainter 绘制矢量图标（不依赖图片资源，抗锯齿）
 QIcon makeIcon(Icon icon, const QColor &color, int size = 24)
@@ -160,6 +160,29 @@ QIcon makeIcon(Icon icon, const QColor &color, int size = 24)
         p.drawLine(QPointF(s * 0.50, s * 0.18), QPointF(s * 0.50, s * 0.46));
         break;
     }
+    case Icon::Expand:
+    case Icon::Collapse: {
+        // 四个对角箭头：Expand 向外，Collapse 向内
+        const bool out = (icon == Icon::Expand);
+        const QPointF c(s * 0.5, s * 0.5);
+        const qreal r1 = s * (out ? 0.19 : 0.46);
+        const qreal r2 = s * (out ? 0.46 : 0.19);
+        const QPointF dirs[4] = { QPointF(1, 1), QPointF(-1, 1),
+                                  QPointF(1, -1), QPointF(-1, -1) };
+        for (int i = 0; i < 4; ++i) {
+            const QPointF d = dirs[i] / qSqrt(2.0);
+            const QPointF a = c + d * r1;
+            const QPointF b = c + d * r2;
+            p.drawLine(a, b);
+            const QPointF perp(-d.y(), d.x());
+            QPolygonF head;
+            head << b
+                 << b - d * (s * 0.10) + perp * (s * 0.07)
+                 << b - d * (s * 0.10) - perp * (s * 0.07);
+            p.drawPolygon(head);
+        }
+        break;
+    }
     }
 
     p.end();
@@ -196,7 +219,8 @@ AlbumWindow::AlbumWindow(QWidget *parent) :
     m_updatingList(false),
     m_lastVolume(80),
     m_errorRetries(0),
-    m_lastItemWasImage(false)
+    m_lastItemWasImage(false),
+    m_fullScreenMode(false)
 {
     buildUi();
 
@@ -233,31 +257,31 @@ void AlbumWindow::buildUi()
     rootLayout->setSpacing(0);
 
     // ===== 顶部状态栏：状态指示 + 文件名 + 音量 =====
-    QWidget *statusBar = new QWidget(central);
-    statusBar->setFixedHeight(52);
-    statusBar->setStyleSheet(QStringLiteral(
+    m_statusBar = new QWidget(central);
+    m_statusBar->setFixedHeight(52);
+    m_statusBar->setStyleSheet(QStringLiteral(
         "background:#1a1a20; border-bottom:1px solid #2a2a32;"));
-    QHBoxLayout *statusLayout = new QHBoxLayout(statusBar);
+    QHBoxLayout *statusLayout = new QHBoxLayout(m_statusBar);
     statusLayout->setContentsMargins(16, 6, 16, 6);
     statusLayout->setSpacing(12);
 
-    QLabel *statusDot = new QLabel(statusBar);
+    QLabel *statusDot = new QLabel(m_statusBar);
     statusDot->setFixedSize(10, 10);
     statusDot->setStyleSheet(QStringLiteral(
         "background:#2f9cf4; border-radius:5px;"));
     statusLayout->addWidget(statusDot);
 
-    m_statusLabel = new QLabel(QStringLiteral("请点击「选择目录」开始"), statusBar);
+    m_statusLabel = new QLabel(QStringLiteral("请点击「选择目录」开始"), m_statusBar);
     m_statusLabel->setStyleSheet(QStringLiteral("color:#eaeaf0; font-size:16px;"));
     m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     statusLayout->addWidget(m_statusLabel, 1);
 
-    QLabel *volumeIcon = new QLabel(statusBar);
+    QLabel *volumeIcon = new QLabel(m_statusBar);
     volumeIcon->setPixmap(makeIcon(Icon::Volume, QColor(0x9a, 0x9a, 0xa5), 22)
                               .pixmap(22, 22));
     statusLayout->addWidget(volumeIcon);
 
-    m_volumeSlider = new QSlider(Qt::Horizontal, statusBar);
+    m_volumeSlider = new QSlider(Qt::Horizontal, m_statusBar);
     m_volumeSlider->setRange(0, 100);
     m_volumeSlider->setValue(80);
     m_volumeSlider->setFixedWidth(180);
@@ -271,7 +295,7 @@ void AlbumWindow::buildUi()
         " background:#ffffff; border-radius:10px; }"));
     statusLayout->addWidget(m_volumeSlider);
 
-    rootLayout->addWidget(statusBar);
+    rootLayout->addWidget(m_statusBar);
 
     // ===== 中间显示区（图片页 + 视频页）+ 播放列表面板 =====
     QWidget *mainArea = new QWidget(central);
@@ -335,9 +359,9 @@ void AlbumWindow::buildUi()
     rootLayout->addWidget(mainArea, 1);
 
     // ===== 底部控制栏 =====
-    QWidget *bar = new QWidget(central);
-    bar->setFixedHeight(78);
-    bar->setStyleSheet(QStringLiteral(
+    m_controlBar = new QWidget(central);
+    m_controlBar->setFixedHeight(78);
+    m_controlBar->setStyleSheet(QStringLiteral(
         "background:#1a1a20; border-top:1px solid #2a2a32;"
         "QToolButton { background:transparent; border:none; color:#c8c8d0;"
         " font-size:13px; padding:4px 8px; border-radius:10px; }"
@@ -345,41 +369,44 @@ void AlbumWindow::buildUi()
         "QToolButton:pressed { background:rgba(255,255,255,0.16); }"
         "QToolButton:checked { background:rgba(47,156,244,0.22); color:#2f9cf4; }"
         "QToolButton:disabled { color:#5a5a64; }"));
-    QHBoxLayout *barLayout = new QHBoxLayout(bar);
+    QHBoxLayout *barLayout = new QHBoxLayout(m_controlBar);
     barLayout->setContentsMargins(16, 8, 16, 8);
     barLayout->setSpacing(10);
 
-    QToolButton *dirButton = makeToolButton(Icon::Folder, QStringLiteral("选择目录"), bar);
-    m_listButton = makeToolButton(Icon::List, QStringLiteral("列表"), bar);
+    QToolButton *dirButton = makeToolButton(Icon::Folder, QStringLiteral("选择目录"), m_controlBar);
+    m_listButton = makeToolButton(Icon::List, QStringLiteral("列表"), m_controlBar);
     m_listButton->setCheckable(true);
+    m_fullScreenButton = makeToolButton(Icon::Expand, QStringLiteral("全屏"), m_controlBar);
+    m_fullScreenButton->setCheckable(true);
 
     // 左右两组等宽，保证中间的播放控制组精确居中
-    QWidget *leftGroup = new QWidget(bar);
+    QWidget *leftGroup = new QWidget(m_controlBar);
     QHBoxLayout *leftLayout = new QHBoxLayout(leftGroup);
     leftLayout->setContentsMargins(0, 0, 0, 0);
     leftLayout->setSpacing(10);
     leftLayout->addWidget(dirButton);
     leftLayout->addWidget(m_listButton);
+    leftLayout->addWidget(m_fullScreenButton);
     leftLayout->addStretch();
     leftGroup->setFixedWidth(300);
 
-    QToolButton *prevButton = makeTransportButton(Icon::Prev, bar);
-    m_playPauseButton = makeTransportButton(Icon::Play, bar);
+    QToolButton *prevButton = makeTransportButton(Icon::Prev, m_controlBar);
+    m_playPauseButton = makeTransportButton(Icon::Play, m_controlBar);
     m_playPauseButton->setStyleSheet(QStringLiteral(
         "QToolButton { background:#2f9cf4; border:none; border-radius:30px; }"
         "QToolButton:hover { background:#4aabff; }"
         "QToolButton:pressed { background:#1f86dc; }"
         "QToolButton:disabled { background:#2a2a32; }"));
-    QToolButton *nextButton = makeTransportButton(Icon::Next, bar);
+    QToolButton *nextButton = makeTransportButton(Icon::Next, m_controlBar);
 
-    m_autoButton = makeToolButton(Icon::Loop, QStringLiteral("轮播开"), bar);
+    m_autoButton = makeToolButton(Icon::Loop, QStringLiteral("轮播开"), m_controlBar);
     m_autoButton->setCheckable(true);
     m_autoButton->setChecked(true);
-    m_muteButton = makeToolButton(Icon::Volume, QStringLiteral("静音"), bar);
+    m_muteButton = makeToolButton(Icon::Volume, QStringLiteral("静音"), m_controlBar);
     m_muteButton->setCheckable(true);
-    QToolButton *exitButton = makeToolButton(Icon::Exit, QStringLiteral("退出"), bar);
+    QToolButton *exitButton = makeToolButton(Icon::Exit, QStringLiteral("退出"), m_controlBar);
 
-    QWidget *rightGroup = new QWidget(bar);
+    QWidget *rightGroup = new QWidget(m_controlBar);
     QHBoxLayout *rightLayout = new QHBoxLayout(rightGroup);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(10);
@@ -397,7 +424,19 @@ void AlbumWindow::buildUi()
     barLayout->addStretch(1);
     barLayout->addWidget(rightGroup);
 
-    rootLayout->addWidget(bar);
+    rootLayout->addWidget(m_controlBar);
+
+    // ===== 全屏模式下的悬浮退出按钮（覆盖在显示区右上角） =====
+    m_exitFullScreenButton = new QToolButton(m_stack);
+    m_exitFullScreenButton->setFixedSize(44, 44);
+    m_exitFullScreenButton->setIconSize(QSize(22, 22));
+    m_exitFullScreenButton->setIcon(makeIcon(Icon::Collapse, QColor(0xff, 0xff, 0xff), 22));
+    m_exitFullScreenButton->setStyleSheet(QStringLiteral(
+        "QToolButton { background:rgba(0,0,0,0.35); border:none; border-radius:22px; }"
+        "QToolButton:hover { background:rgba(0,0,0,0.55); }"
+        "QToolButton:pressed { background:rgba(0,0,0,0.70); }"));
+    m_exitFullScreenButton->setFocusPolicy(Qt::NoFocus);
+    m_exitFullScreenButton->setVisible(false);
 
     // ===== 播放器 =====
     m_player = new QMediaPlayer(this);
@@ -416,6 +455,10 @@ void AlbumWindow::buildUi()
     connect(m_muteButton, &QToolButton::toggled, this, &AlbumWindow::toggleMute);
     connect(m_volumeSlider, &QSlider::valueChanged, this, &AlbumWindow::onVolumeChanged);
     connect(m_listButton, &QToolButton::toggled, this, &AlbumWindow::togglePlaylist);
+    connect(m_fullScreenButton, &QToolButton::toggled, this, &AlbumWindow::toggleFullScreenMode);
+    connect(m_exitFullScreenButton, &QToolButton::clicked, this, [this]() {
+        toggleFullScreenMode(false);
+    });
     connect(exitButton, &QToolButton::clicked, this, &QWidget::close);
     connect(m_imageTimer, &QTimer::timeout, this, &AlbumWindow::onImageTimeout);
     connect(m_listWidget, &QListWidget::currentRowChanged, this, &AlbumWindow::onListRowChanged);
@@ -539,11 +582,15 @@ void AlbumWindow::displayImage(const QString &path, bool animate)
 
     m_imageWidget->setImage(QPixmap::fromImage(image), animate);
     m_stack->setCurrentWidget(m_imageWidget);
+    if (m_exitFullScreenButton->isVisible())
+        m_exitFullScreenButton->raise();
 }
 
 void AlbumWindow::displayVideo(const QString &path)
 {
     m_stack->setCurrentWidget(m_videoPage);
+    if (m_exitFullScreenButton->isVisible())
+        m_exitFullScreenButton->raise();
     m_player->setMedia(QUrl::fromLocalFile(path));
     m_player->setVolume(m_volumeSlider->value());
     m_player->play();
@@ -622,6 +669,36 @@ void AlbumWindow::onVolumeChanged(int value)
 
     QSettings settings;
     settings.setValue(QStringLiteral("volume"), value);
+}
+
+void AlbumWindow::toggleFullScreenMode(bool on)
+{
+    if (m_fullScreenMode == on)
+        return;
+
+    m_fullScreenMode = on;
+
+    // 隐藏/显示顶部状态栏与底部控制栏
+    m_statusBar->setVisible(!on);
+    m_controlBar->setVisible(!on);
+
+    m_exitFullScreenButton->setVisible(on);
+    if (on) {
+        m_exitFullScreenButton->move(m_stack->width() - m_exitFullScreenButton->width() - 12, 12);
+        m_exitFullScreenButton->raise();
+    }
+
+    // 同步切换按钮状态（从悬浮按钮退出时）
+    if (m_fullScreenButton->isChecked() != on) {
+        const bool blocked = m_fullScreenButton->blockSignals(true);
+        m_fullScreenButton->setChecked(on);
+        m_fullScreenButton->blockSignals(blocked);
+    }
+
+    // 显示区域尺寸变化后重新缩放当前图片
+    const QString path = m_playlist.currentFile();
+    if (!path.isEmpty() && PlaylistModel::isImageFile(path))
+        displayImage(path);
 }
 
 void AlbumWindow::togglePlaylist(bool on)
@@ -767,7 +844,11 @@ void AlbumWindow::updateAutoButton()
 
 bool AlbumWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    Q_UNUSED(watched)
+    // 显示区尺寸变化时，保持全屏退出按钮在右上角
+    if (watched == m_stack && event->type() == QEvent::Resize) {
+        if (m_exitFullScreenButton)
+            m_exitFullScreenButton->move(m_stack->width() - m_exitFullScreenButton->width() - 12, 12);
+    }
 
     if (event->type() == QEvent::MouseButtonPress) {
         QMouseEvent *me = static_cast<QMouseEvent *>(event);
@@ -820,7 +901,13 @@ void AlbumWindow::keyPressEvent(QKeyEvent *event)
         togglePlayPause();
         break;
     case Qt::Key_Escape:
-        close();
+        if (m_fullScreenMode)
+            toggleFullScreenMode(false);
+        else
+            close();
+        break;
+    case Qt::Key_F:
+        toggleFullScreenMode(!m_fullScreenMode);
         break;
     default:
         QMainWindow::keyPressEvent(event);

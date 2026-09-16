@@ -156,5 +156,8 @@ int main(int argc, char *argv[])
 
     AlbumWindow w;
     w.showFullScreen();
+    // 支持 --fullscreen 参数：启动即进入沉浸模式（隐藏顶栏/底栏）
+    if (QCoreApplication::arguments().contains(QStringLiteral("--fullscreen")))
+        w.setFullScreenMode(true);
     return a.exec();
 }
